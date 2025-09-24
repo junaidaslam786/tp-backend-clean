@@ -5,3 +5,5 @@ export * from './exchange-code.dto';
 export * from './refresh-token.dto';
 export * from './reset-password.dto';
 export * from './verify-mfa.dto';
+export * from './role-based-registration.dto';
+export * from './role-based-registration.dto';

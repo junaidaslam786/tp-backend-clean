@@ -1,8 +1,11 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CognitoService } from './cognito.service';
+import { RoleBasedOnboardingService } from './role-based-onboarding.service';
+import { UserRepository } from '../../users/repositories/user.repository';
 import { AuthConfig } from '../../../config/auth.config';
 import { AuthUser, AuthSession } from '../interfaces/auth.interfaces';
+import { UserStatus } from '../../users/interfaces/user.interface';
 import {
   ExchangeCodeDto,
   LoginDto,
@@ -20,6 +23,8 @@ export class AuthService {
   constructor(
     private configService: ConfigService,
     private cognitoService: CognitoService,
+    private roleBasedOnboardingService: RoleBasedOnboardingService,
+    private userRepository: UserRepository,
   ) {
     this.authConfig = this.configService.get<AuthConfig>('auth')!;
   }
@@ -56,7 +61,7 @@ export class AuthService {
   }
 
   /**
-   * Exchange authorization code for tokens
+   * Exchange authorization code for tokens with role-based onboarding
    */
   async exchangeCode(exchangeCodeDto: ExchangeCodeDto): Promise<AuthSession> {
     try {
@@ -88,7 +93,48 @@ export class AuthService {
         tokenType: 'id',
         emailVerified: userInfo.email_verified,
         cognitoUsername: userInfo['cognito:username'],
+        cognitoGroups: idTokenPayload['cognito:groups'] || [],
       };
+
+      // Check if user exists in our system and handle onboarding
+      let onboardingResult;
+      if (user.email) {
+        const existingUser = await this.userRepository.findByEmail(user.email);
+        if (
+          !existingUser ||
+          existingUser.status === UserStatus.PENDING_APPROVAL ||
+          existingUser.status === UserStatus.INACTIVE
+        ) {
+          // Check if role-based registration flow is enabled
+          if (this.authConfig.defaultRegistrationFlow === 'role_based') {
+            try {
+              onboardingResult =
+                await this.roleBasedOnboardingService.completeRoleBasedRegistration(
+                  {
+                    email: user.email,
+                    fullName: user.fullName || user.name,
+                    cognitoGroups: user.cognitoGroups,
+                    cognitoUsername: user.username,
+                  },
+                );
+
+              this.logger.log('✅ Role-based onboarding completed', {
+                email: user.email,
+                userType: onboardingResult.userType,
+                needsApproval: onboardingResult.needsApproval,
+              });
+            } catch (error) {
+              this.logger.warn(
+                'Role-based onboarding failed, user can still authenticate',
+                {
+                  email: user.email,
+                  error: error.message,
+                },
+              );
+            }
+          }
+        }
+      }
 
       const session: AuthSession = {
         user,
@@ -103,11 +149,13 @@ export class AuthService {
         expiresAt: new Date(
           Date.now() + tokens.expires_in * 1000,
         ).toISOString(),
+        onboardingResult, // Include onboarding result for frontend handling
       };
 
       this.logger.log('✅ User authenticated successfully', {
         userId: user.id,
         email: user.email,
+        hasOnboardingResult: !!onboardingResult,
       });
       return session;
     } catch (error) {

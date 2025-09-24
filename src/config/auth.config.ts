@@ -14,6 +14,9 @@ export interface AuthConfig {
   cognitoDomain: string;
   cognitoRedirectUri: string;
   cognitoLogoutUri: string;
+  platformAdminDomains: string[];
+  adminDomains: string[];
+  defaultRegistrationFlow: 'role_based' | 'organization_based';
 }
 
 export const authConfigValidationSchema = Joi.object({
@@ -29,6 +32,11 @@ export const authConfigValidationSchema = Joi.object({
   COGNITO_DOMAIN: Joi.string().required(),
   COGNITO_REDIRECT_URI: Joi.string().required(),
   COGNITO_LOGOUT_URI: Joi.string().optional(),
+  PLATFORM_ADMIN_DOMAINS: Joi.string().optional(),
+  ADMIN_DOMAINS: Joi.string().optional(),
+  DEFAULT_REGISTRATION_FLOW: Joi.string()
+    .valid('role_based', 'organization_based')
+    .default('role_based'),
 });
 
 export const authConfig = registerAs(
@@ -49,5 +57,13 @@ export const authConfig = registerAs(
       process.env.COGNITO_LOGOUT_URI ||
       process.env.FRONTEND_URL + '/' ||
       'http://localhost:5173/',
+    platformAdminDomains: process.env.PLATFORM_ADMIN_DOMAINS?.split(',') || [
+      'yourdomain.com',
+    ],
+    adminDomains: process.env.ADMIN_DOMAINS?.split(',') || [],
+    defaultRegistrationFlow:
+      (process.env.DEFAULT_REGISTRATION_FLOW as
+        | 'role_based'
+        | 'organization_based') || 'role_based',
   }),
 );

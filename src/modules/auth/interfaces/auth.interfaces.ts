@@ -52,6 +52,7 @@ export interface AuthUser {
   tokenType: 'id' | 'access';
   emailVerified?: boolean;
   cognitoUsername?: string;
+  cognitoGroups?: string[];
 }
 
 export interface AuthSession {
@@ -65,6 +66,7 @@ export interface AuthSession {
   };
   loginTime: string;
   expiresAt: string;
+  onboardingResult?: any;
 }
 
 export interface NetworkStatus {
